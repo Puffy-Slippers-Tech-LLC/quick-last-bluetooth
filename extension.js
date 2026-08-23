@@ -80,7 +80,7 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         this._defaultDeviceObj = null;
         this._pendingPath = null;
         this._pendingConnect = false;
-        this._destroyed = false;
+        this._cancellable = null;
 
         this.menu.setHeader('bluetooth-active-symbolic', _('Bluetooth'));
 
@@ -255,11 +255,14 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         this._pendingConnect = connect;
         this._sync();
 
+        const cancellable = new Gio.Cancellable();
+        this._cancellable = cancellable;
+
         try {
             await this._client.connect_service(
-                device.get_object_path(), connect, null);
+                device.get_object_path(), connect, cancellable);
         } catch (error) {
-            if (!this._destroyed) {
+            if (!error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
                 Main.notifyError(
                     connect
                         ? _('Bluetooth connect failed')
@@ -267,15 +270,16 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
                     error.message);
             }
         } finally {
-            this._pendingPath = null;
-            this._pendingConnect = false;
-            if (!this._destroyed)
+            if (!cancellable.is_cancelled()) {
+                this._pendingPath = null;
+                this._pendingConnect = false;
                 this._sync();
+            }
         }
     }
 
     destroy() {
-        this._destroyed = true;
+        this._cancellable?.cancel();
         for (const [object, id] of this._signals)
             object.disconnect(id);
         for (const [device, id] of this._deviceSignals.values())
