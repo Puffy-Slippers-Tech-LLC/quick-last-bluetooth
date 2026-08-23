@@ -1,8 +1,8 @@
 # Quick Last-Bluetooth
+Realized that 99 out of 100 times, the only reason you connect to a Bluetooth device is to use your earphones—and yet GNOME makes you click twice and select the same device from the same list every time?
 
-A GNOME Shell extension that adds a Bluetooth button to the Quick Settings
-panel. Click it to instantly connect to your most recently used Bluetooth
-device. Open its menu to pick a different paired device as your default.
+This GNOME Shell extension adds a Bluetooth button to the Quick Settings panel. Click it to instantly connect to your most recently used Bluetooth device, or open its menu to choose a different paired device as your default.
+
 
 ## Screenshots
 
