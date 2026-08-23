@@ -5,5 +5,6 @@
   "gettext-domain": "quick-last-bluetooth@tech.puffyslippers.com",
   "url": "https://github.com/Puffy-Slippers-Tech-LLC/quick-last-bluetooth",
   "shell-version": ["50"],
+  "version": 2,
   "settings-schema": "org.gnome.shell.extensions.quick-last-bluetooth"
 }
