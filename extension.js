@@ -4,6 +4,7 @@
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import GnomeBluetooth from 'gi://GnomeBluetooth?version=3.0';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -34,31 +35,89 @@ class DeviceItem extends PopupMenu.PopupBaseMenuItem {
         this._spinner = new Spinner(16, {hideOnStop: true});
         this.add_child(this._spinner);
 
-        this._device.bind_property('icon', this._icon, 'icon-name',
+        this._spinner.bind_property('visible',
+            this._state, 'visible',
+            GObject.BindingFlags.SYNC_CREATE |
+            GObject.BindingFlags.INVERT_BOOLEAN);
+
+        this._device.bind_property('connectable',
+            this, 'visible',
             GObject.BindingFlags.SYNC_CREATE);
-        this._device.bind_property('alias', this._label, 'text',
+        this._device.bind_property('icon',
+            this._icon, 'icon-name',
             GObject.BindingFlags.SYNC_CREATE);
+        this._device.bind_property('alias',
+            this._label, 'text',
+            GObject.BindingFlags.SYNC_CREATE);
+        this._device.bind_property_full('connected',
+            this._state, 'text',
+            GObject.BindingFlags.SYNC_CREATE,
+            (bind, source) => [true, source ? _('Disconnect') : _('Connect')],
+            null);
 
         this.connect('activate', () => this._toggle._selectDevice(this._device));
+        this._device.connectObject(
+            'notify::alias', () => this._updateAccessibleName(),
+            'notify::connected', () => this._updateAccessibleName(),
+            this);
+        this._updateAccessibleName();
+    }
 
-        this._sync();
+    _updateAccessibleName() {
+        this.accessible_name = this._device.connected
+            // Translators: %s is a device name like "MyPhone"
+            ? _('Disconnect %s').format(this._device.alias)
+            // Translators: %s is a device name like "MyPhone"
+            : _('Connect to %s').format(this._device.alias);
     }
 
     _sync() {
         const pending = this._toggle._pendingPath === this._device.get_object_path();
 
-        this.setOrnament(this._toggle._isDefaultDevice(this._device)
-            ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
-
-        if (pending) {
+        if (pending)
             this._spinner.play();
-            this._state.text = this._toggle._pendingConnect
-                ? _('Connecting…') : _('Disconnecting…');
-        } else {
+        else
             this._spinner.stop();
-            this._state.text = this._device.connected
-                ? _('Connected') : _('Connect');
-        }
+    }
+});
+
+const PinnedDeviceItem = GObject.registerClass(
+class PinnedDeviceItem extends PopupMenu.PopupBaseMenuItem {
+    _init(device, selected, toggle) {
+        super._init({style_class: 'bt-device-item'});
+
+        this._device = device;
+        this._toggle = toggle;
+
+        this._icon = new St.Icon({style_class: 'popup-menu-icon'});
+        this.add_child(this._icon);
+
+        this._label = new St.Label({x_expand: true});
+        this.add_child(this._label);
+
+        this._selectedIcon = new St.Icon({
+            style_class: 'popup-menu-icon',
+            icon_name: 'object-select-symbolic',
+            visible: selected,
+        });
+        this.add_child(this._selectedIcon);
+
+        this._device.bind_property('icon',
+            this._icon, 'icon-name',
+            GObject.BindingFlags.SYNC_CREATE);
+        this._device.bind_property('alias',
+            this._label, 'text',
+            GObject.BindingFlags.SYNC_CREATE);
+
+        this.accessible_name = this._device.alias;
+    }
+
+    setSelected(selected) {
+        this._selectedIcon.visible = selected;
+    }
+
+    activate(event) {
+        this._toggle._selectPinnedDevice(this._device);
     }
 });
 
@@ -75,6 +134,7 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         this._client = client;
         this._settings = settings;
         this._deviceItems = new Map();
+        this._pinnedDeviceItems = new Map();
         this._deviceSignals = new Map();
         this._signals = [];
         this._defaultDeviceObj = null;
@@ -82,20 +142,70 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         this._pendingConnect = false;
         this._cancellable = null;
 
+        this._toggleButton = this._box.get_first_child();
+
         this.menu.setHeader('bluetooth-active-symbolic', _('Bluetooth'));
 
         this._deviceSection = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._deviceSection);
 
-        this._placeholderItem = new PopupMenu.PopupMenuItem(_('No paired devices'), {
-            reactive: false,
-            can_focus: false,
+        this._placeholderItem = new PopupMenu.PopupMenuItem(
+            _('No available or connected devices'), {
+                style_class: 'bt-menu-placeholder',
+                reactive: false,
+                can_focus: false,
+            });
+        this._placeholderItem.label.clutter_text.set({
+            ellipsize: Pango.EllipsizeMode.NONE,
+            line_wrap: true,
         });
         this.menu.addMenuItem(this._placeholderItem);
+
+        this._deviceSection.actor.bind_property('visible',
+            this._placeholderItem, 'visible',
+            GObject.BindingFlags.SYNC_CREATE |
+            GObject.BindingFlags.INVERT_BOOLEAN);
+
+        this.menu.connect('open-state-changed', isOpen => {
+            // Don't reorder the list while the menu is open,
+            // so do it now to start with the proper order
+            if (isOpen)
+                this._reorderDeviceItems();
+        });
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this.menu.addSettingsAction(_('Bluetooth Settings'),
             'gnome-bluetooth-panel.desktop');
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const quickConnectOptionItem = new PopupMenu.PopupMenuItem(
+            _('Quick Connect Option:'), {
+                reactive: true,
+                activate: false,
+                hover: false,
+                can_focus: false,
+            });
+        quickConnectOptionItem.track_hover = false;
+        this.menu.addMenuItem(quickConnectOptionItem);
+
+        this._lastUsedItem = new PopupMenu.PopupMenuItem(_('Last connected device'));
+        this._lastUsedItem.connect('activate',
+            () => this._setQuickConnectOption('last-used'));
+        this.menu.addMenuItem(this._lastUsedItem);
+
+        this._pinnedItem = new PopupMenu.PopupSubMenuMenuItem(_('Pinned device'));
+        this._pinnedItem.menu.connect('open-state-changed', (menu, open) => {
+            if (open)
+                this._setQuickConnectOption('pinned');
+        });
+        this.menu.addMenuItem(this._pinnedItem);
+
+        this._pinnedPlaceholderItem = new PopupMenu.PopupMenuItem(
+            _('No paired devices'), {
+                reactive: false,
+                can_focus: false,
+            });
+        this._pinnedItem.menu.addMenuItem(this._pinnedPlaceholderItem);
 
         this._signals.push([
             this._client,
@@ -114,6 +224,14 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         this._signals.push([
             this._settings,
             this._settings.connect('changed::default-address', () => this._sync()),
+        ]);
+        this._signals.push([
+            this._settings,
+            this._settings.connect('changed::quick-connect-option', () => this._sync()),
+        ]);
+        this._signals.push([
+            this._settings,
+            this._settings.connect('changed::pinned-address', () => this._sync()),
         ]);
 
         this.connect('clicked', () => this._toggleDefault());
@@ -136,7 +254,7 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         return devices;
     }
 
-    _defaultDevice(devices) {
+    _lastUsedDevice(devices) {
         if (devices.length === 0)
             return null;
 
@@ -144,8 +262,30 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         return devices.find(device => device.address === saved) ?? devices[0];
     }
 
-    _isDefaultDevice(device) {
-        return this._defaultDeviceObj?.get_object_path() === device.get_object_path();
+    _pinnedDevice(devices) {
+        if (devices.length === 0)
+            return null;
+
+        const saved = this._settings.get_string('pinned-address');
+        return devices.find(device => device.address === saved) ?? devices[0];
+    }
+
+    _defaultDevice(devices) {
+        return this._settings.get_string('quick-connect-option') === 'pinned'
+            ? this._pinnedDevice(devices)
+            : this._lastUsedDevice(devices);
+    }
+
+    _getSortedDevices(devices) {
+        return devices.sort((dev1, dev2) => {
+            if (dev1.connected !== dev2.connected)
+                return dev2.connected - dev1.connected;
+            return dev1.alias.localeCompare(dev2.alias);
+        });
+    }
+
+    _sortedPairedDevices() {
+        return this._getSortedDevices(this._pairedDevices());
     }
 
     _findByPath(path) {
@@ -164,6 +304,9 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             return;
 
         const id = device.connect('notify', (dev, pspec) => {
+            if (pspec.name === 'connected' && dev.connected)
+                this._updateLastUsed(dev);
+
             if (['connected', 'alias', 'paired', 'trusted'].includes(pspec.name))
                 this._sync();
         });
@@ -180,7 +323,7 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
     }
 
     _sync() {
-        const devices = this._pairedDevices();
+        const devices = this._sortedPairedDevices();
         const device = this._defaultDevice(devices);
         this._defaultDeviceObj = device;
 
@@ -190,22 +333,29 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             ? 'bluetooth-active-symbolic'
             : 'bluetooth-disabled-symbolic';
 
-        if (this._pendingPath) {
-            const pendingDevice = this._findByPath(this._pendingPath);
-            if (pendingDevice) {
-                this.title = pendingDevice.alias;
-                this.subtitle = this._pendingConnect
-                    ? _('Connecting…') : _('Disconnecting…');
-            }
+        this._toggleButton.reactive = devices.length > 0;
+        this._toggleButton.can_focus = devices.length > 0;
+
+        const pendingDevice = this._pendingPath
+            ? this._findByPath(this._pendingPath)
+            : null;
+        const pendingIsDefault = pendingDevice && device &&
+            pendingDevice.get_object_path() === device.get_object_path();
+
+        if (pendingIsDefault) {
+            this.title = pendingDevice.alias;
+            this.subtitle = this._pendingConnect
+                ? _('Connecting…') : _('Disconnecting…');
         } else if (device) {
             this.title = device.alias;
             this.subtitle = connected ? _('Connected') : _('Disconnected');
         } else {
-            this.title = _('Bluetooth');
-            this.subtitle = _('No paired devices');
+            this.title = _('No Devices');
+            this.subtitle = null;
         }
 
         this._updateDeviceItems(devices);
+        this._syncQuickConnectMenu(devices);
     }
 
     _updateDeviceItems(devices) {
@@ -224,21 +374,107 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
                 continue;
 
             const item = new DeviceItem(device, this);
+            item.connect('notify::visible', () => this._updateDeviceVisibility());
             this._deviceSection.addMenuItem(item);
             this._deviceItems.set(path, item);
         }
 
-        this._deviceSection.actor.visible = this._deviceItems.size > 0;
-        this._placeholderItem.visible = this._deviceItems.size === 0;
+        this._updateDeviceVisibility();
 
         for (const item of this._deviceItems.values())
             item._sync();
+    }
+
+    _updateDeviceVisibility() {
+        this._deviceSection.actor.visible =
+            [...this._deviceItems.values()].some(item => item.visible);
+    }
+
+    _reorderDeviceItems() {
+        const devices = this._sortedPairedDevices();
+        for (const [i, device] of devices.entries()) {
+            const item = this._deviceItems.get(device.get_object_path());
+            if (!item)
+                continue;
+
+            this._deviceSection.moveMenuItem(item, i);
+        }
+    }
+
+    _updateLastUsed(device) {
+        if (this._settings.get_string('quick-connect-option') !== 'last-used')
+            return;
+
+        if (this._settings.get_string('default-address') !== device.address)
+            this._settings.set_string('default-address', device.address);
     }
 
     _selectDevice(device) {
         if (this._settings.get_string('default-address') !== device.address)
             this._settings.set_string('default-address', device.address);
         this._toggleDevice(device);
+    }
+
+    _setQuickConnectOption(option) {
+        if (this._settings.get_string('quick-connect-option') !== option)
+            this._settings.set_string('quick-connect-option', option);
+    }
+
+    _setPinnedDevice(device) {
+        if (this._settings.get_string('pinned-address') !== device.address)
+            this._settings.set_string('pinned-address', device.address);
+        this._setQuickConnectOption('pinned');
+    }
+
+    _selectPinnedDevice(device) {
+        this._setPinnedDevice(device);
+        this._pinnedItem.setSubmenuShown(false);
+    }
+
+    _syncQuickConnectMenu(devices) {
+        const pinned = this._settings.get_string('quick-connect-option') === 'pinned';
+
+        this._lastUsedItem.setOrnament(pinned
+            ? PopupMenu.Ornament.NO_DOT
+            : PopupMenu.Ornament.DOT);
+        this._pinnedItem.setOrnament(pinned
+            ? PopupMenu.Ornament.DOT
+            : PopupMenu.Ornament.NO_DOT);
+
+        const pinnedAddress = this._pinnedDevice(devices)?.address ?? null;
+        const submenu = this._pinnedItem.menu;
+
+        this._pinnedPlaceholderItem.visible = devices.length === 0;
+
+        const paths = new Set(devices.map(device => device.get_object_path()));
+        for (const [path, item] of this._pinnedDeviceItems) {
+            if (!paths.has(path)) {
+                item.destroy();
+                this._pinnedDeviceItems.delete(path);
+            }
+        }
+
+        for (const device of devices) {
+            const path = device.get_object_path();
+            const selected = device.address === pinnedAddress;
+
+            if (this._pinnedDeviceItems.has(path)) {
+                this._pinnedDeviceItems.get(path).setSelected(selected);
+                continue;
+            }
+
+            const item = new PinnedDeviceItem(device, selected, this);
+            submenu.addMenuItem(item);
+            this._pinnedDeviceItems.set(path, item);
+        }
+
+        for (const [i, device] of devices.entries()) {
+            const item = this._pinnedDeviceItems.get(device.get_object_path());
+            if (!item)
+                continue;
+
+            submenu.moveMenuItem(item, i + 1);
+        }
     }
 
     _toggleDefault() {

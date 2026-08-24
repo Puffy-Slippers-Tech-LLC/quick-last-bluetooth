@@ -6,9 +6,17 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.quick-last-bluetooth"
           path="/org/gnome/shell/extensions/quick-last-bluetooth/">
+    <key name="quick-connect-option" type="s">
+      <default>'last-used'</default>
+      <summary>Device used by quick connect</summary>
+    </key>
     <key name="default-address" type="s">
       <default>''</default>
-      <summary>Bluetooth device address to connect to</summary>
+      <summary>Most recently used Bluetooth device address</summary>
+    </key>
+    <key name="pinned-address" type="s">
+      <default>''</default>
+      <summary>Pinned Bluetooth device address</summary>
     </key>
   </schema>
 </schemalist>

@@ -8,7 +8,9 @@ This GNOME Shell extension adds a Bluetooth button to the Quick Settings panel. 
 
 ![Quick Settings Bluetooth button](screenshot1.jpg)
 
-![Device picker menu](screenshot2.jpg)
+![Last connected device option](screenshot2.png)
+
+![Pinned device option](screenshot3.png)
 
 ## Install
 
