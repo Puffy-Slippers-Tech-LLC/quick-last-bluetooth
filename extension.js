@@ -128,8 +128,10 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             title: _('Bluetooth'),
             subtitle: _('Disconnected'),
             icon_name: 'bluetooth-disabled-symbolic',
-            menu_button_accessible_name: _('Open Bluetooth menu'),
         });
+
+        if (this._menuButton)
+            this._menuButton.accessible_name = _('Open Bluetooth menu');
 
         this._client = client;
         this._settings = settings;
@@ -166,12 +168,15 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             GObject.BindingFlags.SYNC_CREATE |
             GObject.BindingFlags.INVERT_BOOLEAN);
 
-        this.menu.connect('open-state-changed', isOpen => {
-            // Don't reorder the list while the menu is open,
-            // so do it now to start with the proper order
-            if (isOpen)
-                this._reorderDeviceItems();
-        });
+        this._signals.push([
+            this.menu,
+            this.menu.connect('open-state-changed', isOpen => {
+                // Don't reorder the list while the menu is open,
+                // so do it now to start with the proper order
+                if (isOpen)
+                    this._reorderDeviceItems();
+            }),
+        ]);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this.menu.addSettingsAction(_('Bluetooth Settings'),
@@ -179,7 +184,7 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         const quickConnectOptionItem = new PopupMenu.PopupMenuItem(
-            _('Quick Connect Option:'), {
+            _('Quick Connect Options'), {
                 reactive: true,
                 activate: false,
                 hover: false,
@@ -189,8 +194,8 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         this.menu.addMenuItem(quickConnectOptionItem);
 
         this._lastUsedItem = new PopupMenu.PopupMenuItem(_('Last connected device'));
-        this._lastUsedItem.connect('activate',
-            () => this._setQuickConnectOption('last-used'));
+        this._lastUsedItem.activate =
+            () => this._setQuickConnectOption('last-used');
         this.menu.addMenuItem(this._lastUsedItem);
 
         this._pinnedItem = new PopupMenu.PopupSubMenuMenuItem(_('Pinned device'));
@@ -307,7 +312,7 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             if (pspec.name === 'connected' && dev.connected)
                 this._updateLastUsed(dev);
 
-            if (['connected', 'alias', 'paired', 'trusted'].includes(pspec.name))
+            if (['connected', 'alias', 'icon', 'paired', 'trusted'].includes(pspec.name))
                 this._sync();
         });
         this._deviceSignals.set(path, [device, id]);
@@ -329,8 +334,8 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
 
         const connected = device?.connected ?? false;
         this.checked = connected;
-        this.icon_name = connected
-            ? 'bluetooth-active-symbolic'
+        this.icon_name = device?.icon
+            ? `${device.icon}-symbolic`
             : 'bluetooth-disabled-symbolic';
 
         this._toggleButton.reactive = devices.length > 0;
