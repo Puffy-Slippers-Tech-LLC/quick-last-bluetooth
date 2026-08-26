@@ -10,4 +10,6 @@ gnome-extensions disable "$uuid" 2>/dev/null || true
 install -d "$install_dir"
 unzip -o "$package" -d "$install_dir"
 glib-compile-schemas "$install_dir/schemas"
-gnome-extensions enable "$uuid"
+
+echo "Installed $uuid."
+echo "Log out and back in, then run: gnome-extensions enable $uuid"

@@ -56,10 +56,14 @@ To install on a machine without this repo:
 
    The script disables the extension if present, extracts the zip into
    `~/.local/share/gnome-shell/extensions/quick-last-bluetooth@tech.puffyslippers.com`,
-   compiles the GSettings schema, and re-enables the extension.
+   and compiles the GSettings schema.
 
 4. Log out and back in (or press `Alt+F2`, type `r`, and press Enter) to
-   reload GNOME Shell.
+   reload GNOME Shell, then enable the extension:
+
+   ```bash
+   gnome-extensions enable quick-last-bluetooth@tech.puffyslippers.com
+   ```
 
 ## Build
 
