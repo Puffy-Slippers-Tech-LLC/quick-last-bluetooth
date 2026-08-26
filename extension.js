@@ -124,11 +124,18 @@ class PinnedDeviceItem extends PopupMenu.PopupBaseMenuItem {
 const DefaultBluetoothToggle = GObject.registerClass(
 class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
     _init(client, settings) {
+        this._bindings = [];
         super._init({
             title: _('Bluetooth'),
             subtitle: _('Disconnected'),
             icon_name: 'bluetooth-disabled-symbolic',
         });
+
+        for (const binding of this._bindings) {
+            if (binding.source_property === 'checked')
+                binding.unbind();
+        }
+        this._bindings = null;
 
         if (this._menuButton)
             this._menuButton.accessible_name = _('Open Bluetooth menu');
@@ -238,6 +245,14 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             this._settings,
             this._settings.connect('changed::pinned-address', () => this._sync()),
         ]);
+        this._signals.push([
+            this._client,
+            this._client.connect('notify::default-adapter-powered', () => this._sync()),
+        ]);
+        this._signals.push([
+            this._client,
+            this._client.connect('notify::default-adapter-state', () => this._sync()),
+        ]);
 
         this.connect('clicked', () => this._toggleDefault());
 
@@ -246,6 +261,13 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             this._connectDeviceNotify(store.get_item(i));
 
         this._sync();
+    }
+
+    bind_property(sourceProp, target, targetProp, flags) {
+        const binding = GObject.Object.prototype.bind_property.call(
+            this, sourceProp, target, targetProp, flags);
+        this._bindings?.push(binding);
+        return binding;
     }
 
     _pairedDevices() {
@@ -293,6 +315,21 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         return this._getSortedDevices(this._pairedDevices());
     }
 
+    _iconNameFromAdapterState(state) {
+        switch (state) {
+        case GnomeBluetooth.AdapterState.ON:
+            return 'bluetooth-active-symbolic';
+        case GnomeBluetooth.AdapterState.OFF:
+        case GnomeBluetooth.AdapterState.ABSENT:
+            return 'bluetooth-disabled-symbolic';
+        case GnomeBluetooth.AdapterState.TURNING_ON:
+        case GnomeBluetooth.AdapterState.TURNING_OFF:
+            return 'bluetooth-acquiring-symbolic';
+        default:
+            return 'bluetooth-disabled-symbolic';
+        }
+    }
+
     _findByPath(path) {
         const store = this._client.get_devices();
         for (let i = 0; i < store.get_n_items(); i++) {
@@ -334,12 +371,17 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
 
         const connected = device?.connected ?? false;
         this.checked = connected;
+        if (this._menuButton)
+            this._menuButton.checked = connected;
         this.icon_name = device?.icon
             ? `${device.icon}-symbolic`
-            : 'bluetooth-disabled-symbolic';
+            : this._iconNameFromAdapterState(this._client.default_adapter_state);
 
+        this._toggleButton.checked = this._menuButton.checked
         this._toggleButton.reactive = devices.length > 0;
         this._toggleButton.can_focus = devices.length > 0;
+
+        this._syncHeaderIcon();
 
         const pendingDevice = this._pendingPath
             ? this._findByPath(this._pendingPath)
@@ -361,6 +403,17 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
 
         this._updateDeviceItems(devices);
         this._syncQuickConnectMenu(devices);
+    }
+
+    _syncHeaderIcon() {
+        const icon = this.menu?._headerIcon;
+        if (!icon)
+            return;
+
+        if (this._client.default_adapter_powered)
+            icon.add_style_class_name('active');
+        else
+            icon.remove_style_class_name('active');
     }
 
     _updateDeviceItems(devices) {
