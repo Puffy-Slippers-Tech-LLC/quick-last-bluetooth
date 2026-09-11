@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Puffy Slippers Tech LLC
 
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import GnomeBluetooth from 'gi://GnomeBluetooth?version=3.0';
@@ -123,7 +124,7 @@ class PinnedDeviceItem extends PopupMenu.PopupBaseMenuItem {
 
 const DefaultBluetoothToggle = GObject.registerClass(
 class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
-    _init(client, settings) {
+    _init(client, settings, companyLogo) {
         this._bindings = [];
         super._init({
             title: _('Bluetooth'),
@@ -219,6 +220,8 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             });
         this._pinnedItem.menu.addMenuItem(this._pinnedPlaceholderItem);
 
+        this._addCompanyFooter(companyLogo);
+
         this._signals.push([
             this._client,
             this._client.connect('device-added', (client, device) => {
@@ -261,6 +264,58 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             this._connectDeviceNotify(store.get_item(i));
 
         this._sync();
+    }
+
+    _addCompanyFooter(companyLogo) {
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        const item = new PopupMenu.PopupBaseMenuItem({
+            style_class: 'qlb-company-footer',
+        });
+        item.accessible_name = _('Visit Puffy Slippers Tech website');
+
+        const content = new St.BoxLayout({
+            style_class: 'qlb-company-footer-content',
+            x_expand: true,
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+        content.add_child(new St.Icon({
+            gicon: companyLogo,
+            style_class: 'qlb-company-logo',
+            y_align: Clutter.ActorAlign.CENTER,
+            opacity: 180,
+        }));
+        content.add_child(new St.Widget({
+            style_class: 'qlb-company-divider',
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+        content.add_child(new St.Label({
+            text: 'tech.puffyslippers.com',
+            y_align: Clutter.ActorAlign.CENTER,
+            opacity: 180,
+        }));
+        content.add_child(new St.Icon({
+            gicon: new Gio.ThemedIcon({
+                names: ['external-link-symbolic', 'window-new-symbolic'],
+            }),
+            icon_size: 16,
+            y_align: Clutter.ActorAlign.CENTER,
+            opacity: 180,
+        }));
+        item.add_child(content);
+        item.connect('activate', () => {
+            Gio.AppInfo.launch_default_for_uri_async(
+                'https://tech.puffyslippers.com',
+                global.create_app_launch_context(0, -1), null,
+                (_source, result) => {
+                    try {
+                        Gio.AppInfo.launch_default_for_uri_finish(result);
+                    } catch (error) {
+                        Main.notifyError(_('Could not open company website'), error.message);
+                    }
+                });
+        });
+        this.menu.addMenuItem(item);
     }
 
     bind_property(sourceProp, target, targetProp, flags) {
@@ -586,9 +641,9 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
 
 const DefaultBluetoothIndicator = GObject.registerClass(
 class DefaultBluetoothIndicator extends QuickSettings.SystemIndicator {
-    _init(client, settings) {
+    _init(client, settings, companyLogo) {
         super._init();
-        this.quickSettingsItems.push(new DefaultBluetoothToggle(client, settings));
+        this.quickSettingsItems.push(new DefaultBluetoothToggle(client, settings, companyLogo));
     }
 
     destroy() {
@@ -601,8 +656,11 @@ export default class DefaultBluetoothExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
         this._client = new GnomeBluetooth.Client();
+        const companyLogo = new Gio.FileIcon({
+            file: this.dir.get_child('company-logo.symbolic.png'),
+        });
         this._indicator = new DefaultBluetoothIndicator(
-            this._client, this._settings);
+            this._client, this._settings, companyLogo);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
     }
 

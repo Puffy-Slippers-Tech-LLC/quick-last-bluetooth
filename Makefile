@@ -8,7 +8,7 @@ schemas:
 
 install: schemas
 	mkdir -p "$(DEST)"
-	cp -r extension.js metadata.json schemas "$(DEST)/"
+	cp -r extension.js metadata.json stylesheet.css company-logo.symbolic.png schemas "$(DEST)/"
 
 uninstall:
 	rm -rf "$(DEST)"
@@ -16,6 +16,7 @@ uninstall:
 
 pack: schemas
 	gnome-extensions pack --force --out-dir=. \
+		--extra-source=company-logo.symbolic.png \
 		--schema=schemas/org.gnome.shell.extensions.quick-last-bluetooth.gschema.xml .
 
 clean:

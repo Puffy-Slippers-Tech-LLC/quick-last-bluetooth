@@ -1,0 +1,18 @@
+.qlb-company-footer {
+    font-size: 0.9em;
+}
+
+.qlb-company-footer-content {
+    spacing: 12px;
+}
+
+.qlb-company-logo {
+    icon-size: 32px;
+    -st-icon-style: symbolic;
+}
+
+.qlb-company-divider {
+    width: 1px;
+    height: 28px;
+    background-color: rgba(128, 128, 128, 0.35);
+}
