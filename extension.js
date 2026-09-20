@@ -4,7 +4,7 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
-import GnomeBluetooth from 'gi://GnomeBluetooth?version=3.0';
+import GnomeBluetooth from 'gi://GnomeBluetooth';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
@@ -277,7 +277,7 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
         const content = new St.BoxLayout({
             style_class: 'qlb-company-footer-content',
             x_expand: true,
-            x_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.START,
         });
         content.add_child(new St.Icon({
             gicon: companyLogo,
@@ -657,7 +657,7 @@ export default class DefaultBluetoothExtension extends Extension {
         this._settings = this.getSettings();
         this._client = new GnomeBluetooth.Client();
         const companyLogo = new Gio.FileIcon({
-            file: this.dir.get_child('company-logo.symbolic.png'),
+            file: this.dir.get_child('company-logo.symbolic.svg'),
         });
         this._indicator = new DefaultBluetoothIndicator(
             this._client, this._settings, companyLogo);
