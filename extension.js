@@ -124,10 +124,10 @@ class PinnedDeviceItem extends PopupMenu.PopupBaseMenuItem {
 
 const DefaultBluetoothToggle = GObject.registerClass(
 class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
-    _init(client, settings, companyLogo) {
+    _init(client, settings, companyLogo, appName) {
         this._bindings = [];
         super._init({
-            title: _('Bluetooth'),
+            title: appName,
             subtitle: _('Disconnected'),
             icon_name: 'bluetooth-disabled-symbolic',
         });
@@ -154,7 +154,7 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
 
         this._toggleButton = this._box.get_first_child();
 
-        this.menu.setHeader('bluetooth-active-symbolic', _('Bluetooth'));
+        this.menu.setHeader('bluetooth-active-symbolic', appName);
 
         this._deviceSection = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._deviceSection);
@@ -283,7 +283,6 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
             gicon: companyLogo,
             style_class: 'qlb-company-logo',
             y_align: Clutter.ActorAlign.CENTER,
-            opacity: 180,
         }));
         content.add_child(new St.Widget({
             style_class: 'qlb-company-divider',
@@ -641,9 +640,9 @@ class DefaultBluetoothToggle extends QuickSettings.QuickMenuToggle {
 
 const DefaultBluetoothIndicator = GObject.registerClass(
 class DefaultBluetoothIndicator extends QuickSettings.SystemIndicator {
-    _init(client, settings, companyLogo) {
+    _init(client, settings, companyLogo, appName) {
         super._init();
-        this.quickSettingsItems.push(new DefaultBluetoothToggle(client, settings, companyLogo));
+        this.quickSettingsItems.push(new DefaultBluetoothToggle(client, settings, companyLogo, appName));
     }
 
     destroy() {
@@ -657,10 +656,10 @@ export default class DefaultBluetoothExtension extends Extension {
         this._settings = this.getSettings();
         this._client = new GnomeBluetooth.Client();
         const companyLogo = new Gio.FileIcon({
-            file: this.dir.get_child('company-logo.symbolic.svg'),
+            file: this.dir.get_child('company-logo-symbolic.svg'),
         });
         this._indicator = new DefaultBluetoothIndicator(
-            this._client, this._settings, companyLogo);
+            this._client, this._settings, companyLogo, this.metadata.name);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
     }
 
